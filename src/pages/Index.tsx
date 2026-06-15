@@ -18,9 +18,9 @@ const CHART_COLORS = [
 ];
 
 const RANGES = [
-  { label: '7 дней', days: 7 },
-  { label: '30 дней', days: 30 },
-  { label: '60 дней', days: 60 },
+  { label: '7 дн.', days: 7 },
+  { label: '30 дн.', days: 30 },
+  { label: '60 дн.', days: 60 },
 ];
 
 const fmt = (n: number) =>
@@ -35,14 +35,36 @@ function daysAgo(n: number) {
   return d.toISOString().slice(0, 10);
 }
 
+function initials(fio: string) {
+  const parts = fio.replace('.', '').split(' ');
+  return parts.length >= 2 ? parts[0][0] + parts[1][0] : fio[0];
+}
+
 export default function Index() {
   const [rangeDays, setRangeDays] = useState(30);
   const [project, setProject] = useState<string>('all');
   const [docType, setDocType] = useState<string>('all');
   const [model, setModel] = useState<string>('all');
   const [user, setUser] = useState<string>('all');
+  const [userSearch, setUserSearch] = useState('');
 
   const from = daysAgo(rangeDays - 1);
+
+  // User list with their totals for the current period
+  const userTotals = useMemo(() => {
+    const map = new Map<string, number>();
+    OPERATIONS_DATA.filter(o => o.date >= from).forEach(o =>
+      map.set(o.fio, (map.get(o.fio) || 0) + o.cost)
+    );
+    return FIO_LIST
+      .map(fio => ({ fio, total: +(map.get(fio) || 0).toFixed(1) }))
+      .sort((a, b) => b.total - a.total);
+  }, [from]);
+
+  const filteredUsers = useMemo(() =>
+    userTotals.filter(u =>
+      u.fio.toLowerCase().includes(userSearch.toLowerCase())
+    ), [userTotals, userSearch]);
 
   const filtered = useMemo(() =>
     OPERATIONS_DATA.filter(o =>
@@ -113,169 +135,287 @@ export default function Index() {
   };
 
   const tableRows = filtered.slice().sort((a, b) => b.date.localeCompare(a.date)).slice(0, 50);
+  const maxUserTotal = userTotals[0]?.total || 1;
 
   return (
-    <div className="min-h-screen text-foreground">
-      <div className="mx-auto max-w-[1440px] px-5 py-7 md:px-8 md:py-9">
+    <div className="flex min-h-screen text-foreground">
 
-        <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between animate-fade-in">
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/15 glow-primary">
-              <Icon name="ScanLine" className="text-primary" size={24} />
-            </div>
-            <div>
-              <h1 className="font-display text-2xl font-bold tracking-tight">Расходы на OCR</h1>
-              <p className="text-sm text-muted-foreground">Аналитика затрат на ИИ-распознавание документов</p>
-            </div>
+      {/* ── Sidebar ── */}
+      <aside className="flex w-64 shrink-0 flex-col border-r border-border bg-card/60 backdrop-blur-sm">
+        <div className="flex items-center gap-2.5 border-b border-border px-4 py-4">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/15">
+            <Icon name="Users" className="text-primary" size={16} />
           </div>
-          <Button onClick={exportCSV} className="gap-2 font-medium">
-            <Icon name="Download" size={18} /> Экспорт CSV
-          </Button>
-        </header>
+          <span className="font-display text-sm font-semibold">Пользователи</span>
+        </div>
 
-        <div className="mt-7 flex flex-wrap items-center gap-2 animate-fade-in">
-          <div className="flex rounded-lg border border-border bg-card p-1">
-            {RANGES.map(r => (
+        {/* Search */}
+        <div className="px-3 pt-3 pb-2">
+          <div className="flex items-center gap-2 rounded-lg border border-border bg-secondary/50 px-3 py-2">
+            <Icon name="Search" size={14} className="shrink-0 text-muted-foreground" />
+            <input
+              value={userSearch}
+              onChange={e => setUserSearch(e.target.value)}
+              placeholder="Поиск по имени..."
+              className="w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
+            />
+            {userSearch && (
+              <button onClick={() => setUserSearch('')}>
+                <Icon name="X" size={13} className="text-muted-foreground hover:text-foreground" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* All users button */}
+        <div className="px-3 pb-2">
+          <button
+            onClick={() => setUser('all')}
+            className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${
+              user === 'all'
+                ? 'bg-primary text-primary-foreground'
+                : 'text-muted-foreground hover:bg-secondary/60 hover:text-foreground'
+            }`}
+          >
+            <Icon name="LayoutGrid" size={15} />
+            Все пользователи
+            <span className={`ml-auto rounded-md px-1.5 py-0.5 text-xs font-mono ${
+              user === 'all' ? 'bg-primary-foreground/20 text-primary-foreground' : 'bg-secondary text-muted-foreground'
+            }`}>{FIO_LIST.length}</span>
+          </button>
+        </div>
+
+        <div className="mx-3 mb-2 border-t border-border" />
+
+        {/* User list */}
+        <div className="flex-1 overflow-y-auto px-3 pb-4 space-y-0.5">
+          {filteredUsers.length === 0 && (
+            <p className="px-2 py-4 text-center text-xs text-muted-foreground">Не найдено</p>
+          )}
+          {filteredUsers.map(u => {
+            const isActive = user === u.fio;
+            const barWidth = Math.round((u.total / maxUserTotal) * 100);
+            return (
               <button
-                key={r.days}
-                onClick={() => setRangeDays(r.days)}
-                className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
-                  rangeDays === r.days
-                    ? 'bg-primary text-primary-foreground'
-                    : 'text-muted-foreground hover:text-foreground'
+                key={u.fio}
+                onClick={() => setUser(u.fio)}
+                className={`group relative w-full overflow-hidden rounded-xl px-3 py-2.5 text-left transition-all ${
+                  isActive
+                    ? 'bg-primary/15 text-foreground ring-1 ring-primary/40'
+                    : 'text-muted-foreground hover:bg-secondary/50 hover:text-foreground'
                 }`}
               >
-                {r.label}
-              </button>
-            ))}
-          </div>
-
-          <FilterSelect icon="User" value={user} onChange={setUser}
-            placeholder="Пользователь" all="Все пользователи" options={FIO_LIST} />
-          <FilterSelect icon="Folder" value={project} onChange={setProject}
-            placeholder="Проект" all="Все проекты" options={PROJECT_LIST as unknown as string[]} />
-          <FilterSelect icon="FileText" value={docType} onChange={setDocType}
-            placeholder="Тип документа" all="Все типы" options={DOC_TYPE_LIST} />
-          <FilterSelect icon="Cpu" value={model} onChange={setModel}
-            placeholder="Модель ИИ" all="Все модели" options={MODEL_LIST} />
-
-          <span className="ml-auto text-sm text-muted-foreground">
-            Операций: <span className="font-mono font-semibold text-foreground">{fmt(filtered.length)}</span>
-          </span>
-        </div>
-
-        <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Kpi icon="Wallet" label="Общие расходы" value={fmtMoney(total)}
-            sub={`за ${rangeDays} дн.`} accent />
-          <Kpi icon="TrendingUp" label="Динамика к пред. периоду"
-            value={`${growth >= 0 ? '+' : ''}${growth.toFixed(1)}%`}
-            sub={`было ${fmtMoney(prevTotal)}`} trend={growth >= 0 ? 'up' : 'down'} />
-          <Kpi icon="Receipt" label="Средний чек операции" value={fmtMoney(avgPerOp)}
-            sub={`${fmt(filtered.length)} операций`} />
-          <Kpi icon="CalendarDays" label="Средние расходы в день" value={fmtMoney(avgPerDay)}
-            sub="по периоду" />
-        </div>
-
-        <div className="mt-4 grid gap-4 lg:grid-cols-3">
-          <div className="glass-card rounded-2xl p-5 lg:col-span-2 animate-fade-in">
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="font-display font-semibold">Динамика расходов по дням</h3>
-              <Icon name="Activity" className="text-primary" size={18} />
-            </div>
-            <ResponsiveContainer width="100%" height={260}>
-              <AreaChart data={byDay} margin={{ left: -18, right: 8, top: 5 }}>
-                <defs>
-                  <linearGradient id="grad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="hsl(156 100% 50%)" stopOpacity={0.5} />
-                    <stop offset="100%" stopColor="hsl(156 100% 50%)" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(222 24% 18%)" vertical={false} />
-                <XAxis dataKey="date" tick={{ fill: 'hsl(217 15% 60%)', fontSize: 11 }} tickLine={false} axisLine={false} minTickGap={24} />
-                <YAxis tick={{ fill: 'hsl(217 15% 60%)', fontSize: 11 }} tickLine={false} axisLine={false} />
-                <RTooltip content={<ChartTooltip suffix=" ₽" />} />
-                <Area type="monotone" dataKey="cost" stroke="hsl(156 100% 50%)" strokeWidth={2.5} fill="url(#grad)" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-
-          <div className="glass-card rounded-2xl p-5 animate-fade-in">
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="font-display font-semibold">Расходы по моделям ИИ</h3>
-              <Icon name="Cpu" className="text-accent" size={18} />
-            </div>
-            <ResponsiveContainer width="100%" height={200}>
-              <PieChart>
-                <Pie data={byModel} dataKey="value" nameKey="name" cx="50%" cy="50%"
-                  innerRadius={48} outerRadius={80} paddingAngle={3} stroke="none">
-                  {byModel.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
-                </Pie>
-                <RTooltip content={<ChartTooltip suffix=" ₽" />} />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="mt-2 space-y-1.5">
-              {byModel.map((m, i) => (
-                <div key={m.name} className="flex items-center gap-2 text-sm">
-                  <span className="h-2.5 w-2.5 rounded-full" style={{ background: CHART_COLORS[i % CHART_COLORS.length] }} />
-                  <span className="text-muted-foreground">{m.name}</span>
-                  <span className="ml-auto font-mono text-foreground">{fmtMoney(m.value)}</span>
+                {/* bar track */}
+                <div
+                  className={`absolute bottom-0 left-0 h-0.5 transition-all ${isActive ? 'bg-primary' : 'bg-border group-hover:bg-border'}`}
+                  style={{ width: `${barWidth}%` }}
+                />
+                <div className="flex items-center gap-2.5">
+                  <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold ${
+                    isActive ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'
+                  }`}>
+                    {initials(u.fio)}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium leading-tight text-foreground">{u.fio}</div>
+                    <div className="font-mono text-xs text-muted-foreground">{fmtMoney(u.total)}</div>
+                  </div>
                 </div>
+              </button>
+            );
+          })}
+        </div>
+      </aside>
+
+      {/* ── Main content ── */}
+      <div className="flex-1 overflow-auto">
+        <div className="mx-auto max-w-[1200px] px-6 py-7">
+
+          {/* Header */}
+          <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between animate-fade-in">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/15 glow-primary">
+                <Icon name="ScanLine" className="text-primary" size={24} />
+              </div>
+              <div>
+                <h1 className="font-display text-2xl font-bold tracking-tight">
+                  {user === 'all' ? 'Расходы на OCR' : user}
+                </h1>
+                <p className="text-sm text-muted-foreground">
+                  {user === 'all'
+                    ? 'Аналитика затрат на ИИ-распознавание документов'
+                    : `Персональная аналитика · ${fmt(filtered.length)} операций за ${rangeDays} дн.`}
+                </p>
+              </div>
+            </div>
+            <Button onClick={exportCSV} className="gap-2 font-medium">
+              <Icon name="Download" size={18} /> Экспорт CSV
+            </Button>
+          </header>
+
+          {/* Filters */}
+          <div className="mt-6 flex flex-wrap items-center gap-2 animate-fade-in">
+            <div className="flex rounded-lg border border-border bg-card p-1">
+              {RANGES.map(r => (
+                <button
+                  key={r.days}
+                  onClick={() => setRangeDays(r.days)}
+                  className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
+                    rangeDays === r.days
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {r.label}
+                </button>
               ))}
             </div>
-          </div>
-        </div>
 
-        <div className="mt-4 glass-card rounded-2xl p-5 animate-fade-in">
-          <div className="mb-4 flex items-center justify-between">
-            <h3 className="font-display font-semibold">Топ-5 статей затрат по типам документов</h3>
-            <Icon name="Trophy" className="text-chart-4" size={18} />
-          </div>
-          <ResponsiveContainer width="100%" height={230}>
-            <BarChart data={topDocs} layout="vertical" margin={{ left: 28, right: 16 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(222 24% 18%)" horizontal={false} />
-              <XAxis type="number" tick={{ fill: 'hsl(217 15% 60%)', fontSize: 11 }} tickLine={false} axisLine={false} />
-              <YAxis type="category" dataKey="name" width={110} tick={{ fill: 'hsl(210 40% 98%)', fontSize: 12 }} tickLine={false} axisLine={false} />
-              <RTooltip content={<ChartTooltip suffix=" ₽" />} cursor={{ fill: 'hsl(222 24% 16% / 0.5)' }} />
-              <Bar dataKey="value" radius={[0, 6, 6, 0]} barSize={22}>
-                {topDocs.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+            <FilterSelect icon="Folder" value={project} onChange={setProject}
+              placeholder="Проект" all="Все проекты" options={PROJECT_LIST as unknown as string[]} />
+            <FilterSelect icon="FileText" value={docType} onChange={setDocType}
+              placeholder="Документ" all="Все типы" options={DOC_TYPE_LIST} />
+            <FilterSelect icon="Cpu" value={model} onChange={setModel}
+              placeholder="Модель" all="Все модели" options={MODEL_LIST} />
 
-        <div className="mt-4 glass-card rounded-2xl animate-fade-in">
-          <div className="flex items-center justify-between p-5 pb-3">
-            <h3 className="font-display font-semibold">Детализация операций</h3>
-            <span className="text-sm text-muted-foreground">показаны последние 50</span>
+            <span className="ml-auto text-sm text-muted-foreground">
+              Операций: <span className="font-mono font-semibold text-foreground">{fmt(filtered.length)}</span>
+            </span>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-y border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
-                  <Th>ФИО</Th><Th>GUID</Th><Th>Дата</Th><Th>ИИ операция</Th>
-                  <Th>Тип документа</Th><Th>Модель ИИ</Th><Th>Проект</Th><Th className="text-right">Стоимость</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {tableRows.map((o: Operation) => (
-                  <tr key={o.id} className="border-b border-border/50 transition hover:bg-secondary/40">
-                    <td className="px-4 py-2.5 font-medium">{o.fio}</td>
-                    <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">{o.guid.slice(0, 13)}…</td>
-                    <td className="px-4 py-2.5 font-mono text-muted-foreground">{o.date}</td>
-                    <td className="px-4 py-2.5">{o.operation}</td>
-                    <td className="px-4 py-2.5">{o.docType}</td>
-                    <td className="px-4 py-2.5">{o.model}</td>
-                    <td className="px-4 py-2.5">
-                      <span className={`rounded-md px-2 py-0.5 text-xs font-medium ${
-                        o.project === 'BFLsoft' ? 'bg-primary/15 text-primary' : 'bg-accent/15 text-accent'
-                      }`}>{o.project}</span>
-                    </td>
-                    <td className="px-4 py-2.5 text-right font-mono font-semibold">{o.cost.toFixed(2)} ₽</td>
-                  </tr>
+
+          {/* KPI cards */}
+          <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <Kpi icon="Wallet" label="Общие расходы" value={fmtMoney(total)}
+              sub={`за ${rangeDays} дн.`} accent />
+            <Kpi icon="TrendingUp" label="Динамика к пред. периоду"
+              value={`${growth >= 0 ? '+' : ''}${growth.toFixed(1)}%`}
+              sub={`было ${fmtMoney(prevTotal)}`} trend={growth >= 0 ? 'up' : 'down'} />
+            <Kpi icon="Receipt" label="Средний чек операции" value={fmtMoney(avgPerOp)}
+              sub={`${fmt(filtered.length)} операций`} />
+            <Kpi icon="CalendarDays" label="Расходы в день" value={fmtMoney(avgPerDay)}
+              sub="среднее по периоду" />
+          </div>
+
+          {/* Charts */}
+          <div className="mt-4 grid gap-4 lg:grid-cols-3">
+            <div className="glass-card rounded-2xl p-5 lg:col-span-2 animate-fade-in">
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="font-display font-semibold">Динамика расходов по дням</h3>
+                <Icon name="Activity" className="text-primary" size={18} />
+              </div>
+              <ResponsiveContainer width="100%" height={240}>
+                <AreaChart data={byDay} margin={{ left: -18, right: 8, top: 5 }}>
+                  <defs>
+                    <linearGradient id="grad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="hsl(156 100% 50%)" stopOpacity={0.5} />
+                      <stop offset="100%" stopColor="hsl(156 100% 50%)" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(222 24% 18%)" vertical={false} />
+                  <XAxis dataKey="date" tick={{ fill: 'hsl(217 15% 60%)', fontSize: 11 }} tickLine={false} axisLine={false} minTickGap={24} />
+                  <YAxis tick={{ fill: 'hsl(217 15% 60%)', fontSize: 11 }} tickLine={false} axisLine={false} />
+                  <RTooltip content={<ChartTooltip suffix=" ₽" />} />
+                  <Area type="monotone" dataKey="cost" stroke="hsl(156 100% 50%)" strokeWidth={2.5} fill="url(#grad)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div className="glass-card rounded-2xl p-5 animate-fade-in">
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="font-display font-semibold">Расходы по моделям ИИ</h3>
+                <Icon name="Cpu" className="text-accent" size={18} />
+              </div>
+              <ResponsiveContainer width="100%" height={180}>
+                <PieChart>
+                  <Pie data={byModel} dataKey="value" nameKey="name" cx="50%" cy="50%"
+                    innerRadius={42} outerRadius={72} paddingAngle={3} stroke="none">
+                    {byModel.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
+                  </Pie>
+                  <RTooltip content={<ChartTooltip suffix=" ₽" />} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="mt-2 space-y-1.5">
+                {byModel.map((m, i) => (
+                  <div key={m.name} className="flex items-center gap-2 text-sm">
+                    <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: CHART_COLORS[i % CHART_COLORS.length] }} />
+                    <span className="truncate text-muted-foreground">{m.name}</span>
+                    <span className="ml-auto font-mono text-foreground">{fmtMoney(m.value)}</span>
+                  </div>
                 ))}
-              </tbody>
-            </table>
+              </div>
+            </div>
           </div>
+
+          {/* Top-5 */}
+          <div className="mt-4 glass-card rounded-2xl p-5 animate-fade-in">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="font-display font-semibold">Топ-5 статей затрат по типам документов</h3>
+              <Icon name="Trophy" size={18} className="text-yellow-400" />
+            </div>
+            <ResponsiveContainer width="100%" height={210}>
+              <BarChart data={topDocs} layout="vertical" margin={{ left: 28, right: 16 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(222 24% 18%)" horizontal={false} />
+                <XAxis type="number" tick={{ fill: 'hsl(217 15% 60%)', fontSize: 11 }} tickLine={false} axisLine={false} />
+                <YAxis type="category" dataKey="name" width={110} tick={{ fill: 'hsl(210 40% 98%)', fontSize: 12 }} tickLine={false} axisLine={false} />
+                <RTooltip content={<ChartTooltip suffix=" ₽" />} cursor={{ fill: 'hsl(222 24% 16% / 0.5)' }} />
+                <Bar dataKey="value" radius={[0, 6, 6, 0]} barSize={20}>
+                  {topDocs.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Table */}
+          <div className="mt-4 glass-card rounded-2xl animate-fade-in">
+            <div className="flex items-center justify-between p-5 pb-3">
+              <h3 className="font-display font-semibold">Детализация операций</h3>
+              <span className="text-sm text-muted-foreground">показаны последние 50</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-y border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
+                    {user === 'all' && <Th>ФИО</Th>}
+                    <Th>GUID</Th><Th>Дата</Th><Th>ИИ операция</Th>
+                    <Th>Тип документа</Th><Th>Модель ИИ</Th><Th>Проект</Th>
+                    <Th className="text-right">Стоимость</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tableRows.map((o: Operation) => (
+                    <tr
+                      key={o.id}
+                      className="border-b border-border/50 transition hover:bg-secondary/40 cursor-pointer"
+                      onClick={() => setUser(o.fio)}
+                    >
+                      {user === 'all' && (
+                        <td className="px-4 py-2.5">
+                          <div className="flex items-center gap-2">
+                            <span className="flex h-6 w-6 items-center justify-center rounded-md bg-secondary text-xs font-bold text-muted-foreground">
+                              {initials(o.fio)}
+                            </span>
+                            <span className="font-medium">{o.fio}</span>
+                          </div>
+                        </td>
+                      )}
+                      <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">{o.guid.slice(0, 13)}…</td>
+                      <td className="px-4 py-2.5 font-mono text-muted-foreground">{o.date}</td>
+                      <td className="px-4 py-2.5">{o.operation}</td>
+                      <td className="px-4 py-2.5">{o.docType}</td>
+                      <td className="px-4 py-2.5">{o.model}</td>
+                      <td className="px-4 py-2.5">
+                        <span className={`rounded-md px-2 py-0.5 text-xs font-medium ${
+                          o.project === 'BFLsoft' ? 'bg-primary/15 text-primary' : 'bg-accent/15 text-accent'
+                        }`}>{o.project}</span>
+                      </td>
+                      <td className="px-4 py-2.5 text-right font-mono font-semibold">{o.cost.toFixed(2)} ₽</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
         </div>
       </div>
     </div>
