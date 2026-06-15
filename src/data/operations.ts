@@ -71,3 +71,4 @@ export const OPERATIONS_DATA: Operation[] = generate();
 export const DOC_TYPE_LIST = DOC_TYPES;
 export const MODEL_LIST = MODELS;
 export const PROJECT_LIST = PROJECTS;
+export const FIO_LIST = FIO;

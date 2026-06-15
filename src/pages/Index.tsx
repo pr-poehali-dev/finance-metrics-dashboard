@@ -9,7 +9,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import {
-  OPERATIONS_DATA, DOC_TYPE_LIST, MODEL_LIST, PROJECT_LIST, type Operation,
+  OPERATIONS_DATA, DOC_TYPE_LIST, MODEL_LIST, PROJECT_LIST, FIO_LIST, type Operation,
 } from '@/data/operations';
 
 const CHART_COLORS = [
@@ -40,6 +40,7 @@ export default function Index() {
   const [project, setProject] = useState<string>('all');
   const [docType, setDocType] = useState<string>('all');
   const [model, setModel] = useState<string>('all');
+  const [user, setUser] = useState<string>('all');
 
   const from = daysAgo(rangeDays - 1);
 
@@ -48,8 +49,9 @@ export default function Index() {
       o.date >= from &&
       (project === 'all' || o.project === project) &&
       (docType === 'all' || o.docType === docType) &&
-      (model === 'all' || o.model === model)
-    ), [from, project, docType, model]);
+      (model === 'all' || o.model === model) &&
+      (user === 'all' || o.fio === user)
+    ), [from, project, docType, model, user]);
 
   const prevFrom = daysAgo(rangeDays * 2 - 1);
   const prevTo = daysAgo(rangeDays);
@@ -58,8 +60,9 @@ export default function Index() {
       o.date >= prevFrom && o.date <= prevTo &&
       (project === 'all' || o.project === project) &&
       (docType === 'all' || o.docType === docType) &&
-      (model === 'all' || o.model === model)
-    ), [prevFrom, prevTo, project, docType, model]);
+      (model === 'all' || o.model === model) &&
+      (user === 'all' || o.fio === user)
+    ), [prevFrom, prevTo, project, docType, model, user]);
 
   const total = filtered.reduce((s, o) => s + o.cost, 0);
   const prevTotal = prevFiltered.reduce((s, o) => s + o.cost, 0);
@@ -147,6 +150,8 @@ export default function Index() {
             ))}
           </div>
 
+          <FilterSelect icon="User" value={user} onChange={setUser}
+            placeholder="Пользователь" all="Все пользователи" options={FIO_LIST} />
           <FilterSelect icon="Folder" value={project} onChange={setProject}
             placeholder="Проект" all="Все проекты" options={PROJECT_LIST as unknown as string[]} />
           <FilterSelect icon="FileText" value={docType} onChange={setDocType}
